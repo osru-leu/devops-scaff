@@ -1,0 +1,22 @@
+name: test-rel-build
+
+on:
+    push:
+        branches:
+            - "release/**"
+    workflow_dispatch:
+        inputs:
+            release_branch:
+                description: "Release branch to build (e.g., release/1.2.x)"
+                required: true
+                type: string
+                default: ""
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Build
+              id: build
+              run: |
+                    echo "Building"
