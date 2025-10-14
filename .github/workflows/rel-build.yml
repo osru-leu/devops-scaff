@@ -19,6 +19,8 @@ on:
 jobs:
     build:
         runs-on: ubuntu-latest
+        permissions:
+            contents: write  # Required to create and push git tags
         outputs:
             version: ${{ steps.vars.outputs.version }}
             tag_version: ${{ steps.vars.outputs.tag_version }}
