@@ -193,6 +193,7 @@ jobs:
       branch_name: ${{ steps.create.outputs.branch_name }}
     permissions:
       contents: write
+      actions: write
 
     steps:
       - name: Checkout code
@@ -212,6 +213,17 @@ jobs:
           # Create and switch to the new branch
           git checkout -b $branch_name
 
+          # Ensure the rel-build workflow file exists on the release branch
+          # This is needed for the workflow_dispatch to work properly
+          if [ ! -f ".github/workflows/rel-build.yml" ]; then
+            echo "Copying rel-build.yml to release branch..."
+            # The file should already exist since we're branching from main
+            # But let's make sure it's there
+            git checkout main -- .github/workflows/rel-build.yml
+            git add .github/workflows/rel-build.yml
+            git commit -m "Add rel-build workflow to release branch"
+          fi
+
           # Set up remote URL with token
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
 
@@ -220,6 +232,40 @@ jobs:
 
           echo "✅ Successfully created and pushed branch: $branch_name"
           echo "branch_name=$branch_name" >> $GITHUB_OUTPUT
+
+      - name: Trigger Build Workflow
+        run: |
+          branch_name="${{ needs.prepare_release_branch.outputs.branch_name }}"
+
+          echo "Triggering rel-build workflow for branch: $branch_name"
+
+          # Trigger the rel-build workflow on the release branch itself
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/rel-build.yml/dispatches" \
+            -d '{
+              "ref": "'$branch_name'",
+              "inputs": {
+                "release_branch": "'$branch_name'"
+              }
+            }')
+
+          # Extract HTTP status code
+          http_code=$(echo "$response" | tail -n1)
+          response_body=$(echo "$response" | head -n -1)
+
+          echo "HTTP Status Code: $http_code"
+          echo "Response: $response_body"
+
+          if [ "$http_code" = "204" ]; then
+            echo "✅ Successfully triggered rel-build workflow for branch: $branch_name"
+          else
+            echo "❌ Failed to trigger workflow. HTTP $http_code: $response_body"
+            echo "This might be due to insufficient permissions or the workflow not being available."
+            echo "The build workflow will need to be triggered manually or via push to the release branch."
+          fi
 
       - name: Final Summary
         run: |
@@ -235,4 +281,4 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**[View Branch]($branch_url)**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🚀 **The rel-build workflow will automatically trigger for this branch!**" >> $GITHUB_STEP_SUMMARY
+          echo "🚀 **The rel-build workflow has been triggered for this branch!**" >> $GITHUB_STEP_SUMMARY
